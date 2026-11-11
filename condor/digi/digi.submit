@@ -1,0 +1,104 @@
+# ------------------------------------------------------------------------
+# HTCondor submit file for MAIA_v0 digitization (k4run digi_steer.py).
+#
+# One condor job per sim chunk. Reads
+#   $(OUTPUT_ROOT)/$(SAMPLE)/sim/${SAMPLE}_sim<id>.edm4hep.root
+# and writes
+#   $(OUTPUT_ROOT)/$(SAMPLE)/digi_<bibTag>_<coneTag>[_<DIGI_TAG>]/${SAMPLE}_digi<id>.edm4hep.root
+#
+# Normally submitted through submit_all_digi.sh, which sets every per-run
+# value (SAMPLE, BIB_LEVEL, DO_CONING, TIMING, DIGI_TAG, MAX_FILES,
+# request_memory) with condor_submit -append. By hand, use -append too: plain
+# VAR=value on the command line is applied BEFORE this file is read, so the
+# defaults below silently win.
+#
+# The job count is NOT fixed: `queue PROCID from list_sim_ids.sh` (bottom
+# of this file) enumerates the sim outputs that actually exist, so chunks
+# whose sim job failed or was held simply drop out instead of queueing a
+# job doomed to fail at stage-in.
+#
+# BIB tags: 0 -> NoBIB, 17 -> 1pcBIB, 81 -> 5pcBIB, 167 -> nomBIB (10pc),
+# 1667 -> fullBIB. Any other integer falls back to "<N>bkgBIB".
+# ------------------------------------------------------------------------
+
+SAMPLE       = muon_pT2_1000GeV_theta88_92
+BIB_LEVEL    = 1667
+DO_CONING    = 0
+N_THREADS    = 1
+
+# Tracker time windows (overlay + digitiser together), by name in
+# configs/.../TrackerDigi/timing_presets.py: nominal | loose | extended. Required, no
+# default; passed as a job argument so it is fixed at submit time. Do NOT
+# change the windows by editing the config files: configs/ is transferred
+# when each job STARTS, so the edit reaches every job still in the queue.
+# digi.sh also requires DIGI_TAG to contain "<TIMING>_timing" exactly when
+# TIMING is extended or loose, and "rawtime" always (raw hit times since 2026-10-16),
+# so the directory name always matches its contents.
+TIMING       =
+
+# Optional extra label appended to the output directory name, so two runs
+# that share the same BIB/coning settings do not overwrite each other:
+#   condor_submit -append "DIGI_TAG = v2" digi.submit
+# -> .../digi_fullBIB_coned_v2. Leave empty for the plain name. Characters
+# outside [A-Za-z0-9._-] are stripped by common.sh's name_tag.
+DIGI_TAG     = extended_timing_rawtime
+
+# Generator statuses the tracker coning builds cones around, comma separated
+# (only used with DO_CONING = 1). Staus from HepMC are not status 1: 1,2,22.
+CONE_STATUS  = 1
+
+# Process only the first N sim files (lowest chunk id first); 0 = all.
+# Handy for a small test pass before committing the full set:
+#   condor_submit MAX_FILES=5 digi.submit
+MAX_FILES    = 25
+
+# Must match sim.submit's OUTPUT_ROOT so digi finds the sim output.
+# digi.sh derives $(OUTPUT_ROOT)/$(SAMPLE)/sim for input and
+# $(OUTPUT_ROOT)/$(SAMPLE)/digi_<bibTag>_<coneTag> for output -- the tag
+# lookup lives in common.sh because HTCondor's $CHOICE is a numeric-index
+# function and cannot do a key=value mapping.
+OUTPUT_ROOT  = /ospool/uc-shared/project/futurecolliders/larsonma
+
+BENCH_ROOT   = /scratch/larsonma/tutorial2024/ACTSGaudi/TemplateWorkspace/mucoll-benchmarks
+
+# Container image, read from CVMFS. Previous image (OSDF, project namespace)
+# kept commented below.
+CONTAINER_IMAGE = /cvmfs/public-uc.osgstorage.org/ospool/uc-shared/public/futurecolliders/larsonma/mucoll-sim-ubuntu24_full_gaudi_103126_latest.sif
+#CONTAINER_IMAGE = osdf:///ospool/uc-shared/project/futurecolliders/larsonma/mucoll-sim-ubuntu24_full_gaudi_100826_latest.sif
+
+Universe                = vanilla
++SingularityImage       = "$(CONTAINER_IMAGE)"
+# BIB overlay reads from /cvmfs/public-uc.osgstorage.org (see digi.sh).
+# Sim input / digi output move over OSDF via pelican, so no /ospool bind.
+Requirements            = ( HAS_SINGULARITY =?= True ) && ( HAS_CVMFS_public_uc_osgstorage_org =?= True )
+
+Executable              = $(BENCH_ROOT)/condor/digi/digi.sh
+# --outTag=/--timing= are written as one token on purpose: with the macro
+# empty it expands to nothing, and a bare "--outTag" would swallow whatever
+# followed it. An empty --timing= then fails digi.sh's check.
+Arguments               = --sample $(SAMPLE) --outputRoot $(OUTPUT_ROOT) --pId $(PROCID) --BIB $(BIB_LEVEL) --doConing $(DO_CONING) --nThreads $(N_THREADS) --outTag=$(DIGI_TAG) --timing=$(TIMING) --coneStatus=$(CONE_STATUS)
+
+should_transfer_files   = YES
+when_to_transfer_output = ON_EXIT
+transfer_input_files    = $(BENCH_ROOT)/condor/common.sh, \
+                          $(BENCH_ROOT)/configs, \
+                          $(BENCH_ROOT)/setup_config.sh
+transfer_output_files   = ""
+
+# Named by PROCID (the sim chunk id), not condor's ProcId, so a log maps
+# straight back to its sim/digi file.
+Output = $(BENCH_ROOT)/condor/digi/logs/out.$(Cluster).$(PROCID)
+Error  = $(BENCH_ROOT)/condor/digi/logs/err.$(Cluster).$(PROCID)
+Log    = $(BENCH_ROOT)/condor/digi/logs/log.$(Cluster)
+
+request_cpus    = $(N_THREADS)
+request_disk    = 8 GB
+# 16 GB matches the memory the old nominal-BIB digi jobs needed. Drop it
+# for NoBIB runs; raise it for BIB_LEVEL=1667.
+request_memory  = 16 GB
++ProjectName    = "collab.futurecolliders"
+
+# Queue one job per sim output that exists (see header). The helper prints
+# one chunk id per line; no pipes inside the command -- condor's parser
+# uses the trailing '|' to mark it as a command rather than a filename.
+queue PROCID from $(BENCH_ROOT)/condor/digi/list_sim_ids.sh $(OUTPUT_ROOT) $(SAMPLE) $(MAX_FILES) |

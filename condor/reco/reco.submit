@@ -1,0 +1,170 @@
+# ------------------------------------------------------------------------
+# HTCondor submit file for MAIA_v0 reconstruction (k4run reco_steer.py).
+#
+# One condor job per digi chunk listed in CHUNK_LIST (one index per line,
+# written by submit_all_reco.sh). Reads
+#   $(DIGI_DIR)/${SAMPLE}_digi$(CHUNK).edm4hep.root
+# and writes
+#   $(OUT_DIR)/${SAMPLE}_reco$(CHUNK).edm4hep.root
+#
+# BIB / coning tags match the corresponding digi submission and are used
+# to auto-generate the input and output directory names.
+#
+# Normally submitted through submit_all_reco.sh, which sets every per-run
+# value below with condor_submit -append (see "Runs").
+# ------------------------------------------------------------------------
+
+#SAMPLE       = $(SAMPLE)
+#CHUNK_LIST   = $(CHUNK_LIST)
+# BIB_LEVEL only labels the digi input directory; reco itself just needs
+# to know if BIB overlay was on (USE_BIB below).
+#BIB_LEVEL    = $(BIB_LEVEL)
+#DO_CONING    = $(DO_CONING)
+
+# Which digi variant to read. BIB_LEVEL/DO_CONING pick the base directory
+# name; DIGI_TAG picks between runs that share it, and must match the
+# DIGI_TAG the digi submission used:
+#   condor_submit ... -append "DIGI_TAG = v2" reco.submit
+# -> reads .../digi_nomBIB_coned_v2
+DIGI_TAG     =
+
+# Label for this job's own output directory. Defaults to DIGI_TAG so the
+# reco output sits beside the digi variant it came from; set it explicitly
+# to reco the same digi input several ways:
+#   condor_submit ... -append "DIGI_TAG = v2" -append "RECO_TAG = v2_looseCKF" reco.submit
+# -> reads .../digi_nomBIB_coned_v2, writes .../reco_nomBIB_coned_v2_looseCKF
+RECO_TAG     = $(DIGI_TAG)
+
+# Extra label appended after RECO_TAG, e.g. to tell apart two runs that
+# share a RECO_TAG:
+#   condor_submit ... -append "RECO_LABEL = rerun" reco.submit
+# -> writes .../reco_fullBIB_uncone_<RECO_TAG>_rerun
+# It is only a name: the CKF configuration itself is SEEDING /
+# CKF_DIRECTION / TWO_WAY / SEED_ZMAX below.
+RECO_LABEL   =
+
+# CKF configuration, passed to the job as arguments. Do NOT configure the
+# CKF by editing configs/.../Tracking/CKF_tracking.py between submissions:
+# the configs directory (and the shipped k4ActsTracking build) is transferred
+# when each job STARTS, not when it is submitted, so an edit reaches every
+# job of every cluster still in the queue. Arguments are frozen at
+# condor_submit time. All six are required (set per run by
+# submit_all_reco.sh); reco.sh refuses to run without them.
+#   SEEDING        name in configs/.../Tracking/seeding_presets.py:
+#                  VXD, IT, OT (barrel only), VXDNominal (VXD barrel + VXD
+#                  endcap layers 1, 3, 5), ITOTDisks (IT + OT, barrels and disks),
+#                  ITOTDisks_Minimal (minimal outermost subset of ITOTDisks)
+#   CKF_DIRECTION  InOut | OutIn (OutIn = PropagateBackward)
+#   TWO_WAY        1 | 0
+#   SEED_DEDUP     1 | 0: skip seeds whose hits are all on an earlier track (SeedDeduplication)
+#   SEED_DEDUP_MIN_SHARED  1 | 2 | 3: hits a seed must share with an earlier track to be
+#                  skipped (default 3 below = all)
+#   HIT_TIME       1 | 0: 4D tracking, seed time cuts + CKF hit time (default 1 below)
+#   TIME_BETA      beta assumed for the hit times in 4D tracking, (0, 1] (default 1.0 below = no shift)
+#   SEED_ZMAX      max |z| of seed space points [mm]; points beyond it are
+#                  silently dropped from seeding. Disk seeding needs >= 2210.
+#   SEED_IMPACT_MAX  max seed |d0| [mm] (SeedFinding_ImpactMax)
+#   SEED_CR        collision region half-length in z [mm] (SeedFinding_CollisionRegion)
+#   SEED_MIN_PT    min seed pT [GeV] (SeedFinding_MinPt; >= ~1.2 with RMax 1600)
+#   SEED_DZ_MAX    max |dz| of a seed doublet [mm] (SeedFinding_DeltaZMax; default 0 below = no cut)
+#   SEED_DR_MAX_TOP  max middle-top dr of a seed [mm] (SeedFinding_DeltaRMaxTop; default 0 below = DeltaRMax)
+#   SEED_MAX_PER_SPM  seeds per middle SP minus one (SeedFilter_MaxSeedsPerSpM; default 1 below)
+#   SEED_COMPAT_WEIGHT  SeedFilter_CompatSeedWeight (default 0 below)
+#   SEED_ZBINS     1 = the preset's SEEDING_Z_BINS (Tracking/seeding_presets.py) (default 0 below)
+#   SEED_R_MAX     max r of seed space points [mm] (SeedFinding_RMax; default 1600 below)
+#   FILTER_D0, FILTER_Z0  max SiTrack |d0| / |z0| [mm] (FilterTracksAlg)
+#
+# Naming convention for RECO_TAG: <SEEDING>_<CKF_DIRECTION>, plus _TwoWay
+# for the VXD seedings, where two-way is optional. IT/OT-based seeding always
+# runs two-way, so the suffix is left off there.
+
+# Threads used inside the tracking algorithms (--TrackingThreads), and Gaudi
+# event-loop threads (k4run --numThreads; 1 = serial, > 1 = Hive with that many
+# events in flight). request_cpus below is their product. In the ChronoStatSvc
+# table in the job log, Elapsed is the wall-clock run time and User is CPU
+# summed over all threads. Was 8 tracking threads / 1 event thread until 2026-10-19.
+TRACKING_THREADS = 1
+EVENT_THREADS    = 2
+
+SEED_DEDUP_MIN_SHARED = 3
+HIT_TIME = 1
+TIME_BETA = 1.0
+SEED_DZ_MAX = 0
+SEED_DR_MAX_TOP = 0
+SEED_MAX_PER_SPM = 1
+SEED_COMPAT_WEIGHT = 0
+SEED_ZBINS = 0
+SEED_R_MAX = 1600
+
+# ---- Runs ---------------------------------------------------------------
+# SAMPLE, CHUNK_LIST, BIB_LEVEL, DO_CONING, DIGI_TAG, RECO_TAG, SEEDING,
+# CKF_DIRECTION, TWO_WAY, SEED_DEDUP, SEED_ZMAX, SEED_IMPACT_MAX, SEED_CR, SEED_MIN_PT, FILTER_D0 and FILTER_Z0 are set per run by submit_all_reco.sh, which
+# holds the list of configurations (and writes the CHUNK_LIST file).
+# Submitting this file on its own fails, by design.
+#
+# To submit a single configuration by hand, pass every one of them with
+# -append, which overrides this file. Plain VAR=value on the command line
+# does NOT: condor_submit applies it before reading the file, so anything
+# the file defines (DIGI_TAG, RECO_TAG, ...) silently wins.
+
+# Must match digi.submit's OUTPUT_ROOT so reco finds the digi output.
+# reco.sh derives $(OUTPUT_ROOT)/$(SAMPLE)/digi_<bibTag>_<coneTag>[_<DIGI_TAG>]
+# for input and .../reco_<bibTag>_<coneTag>[_<RECO_TAG>] for output, and turns BIB_LEVEL
+# into the on/off --doOverlayFull decision. Tag lookup lives in common.sh
+# because HTCondor's $CHOICE cannot do a key=value mapping.
+OUTPUT_ROOT  = /ospool/uc-shared/project/futurecolliders/larsonma
+
+BENCH_ROOT   = /scratch/larsonma/tutorial2024/ACTSGaudi/TemplateWorkspace/mucoll-benchmarks
+
+# Container image (11.8 GB) from CVMFS, so it is not copied into each job's
+# scratch (the OSDF copy filled the 8 GB request_disk: "no space left on device").
+# Must be the image K4ACTS_BUILD below was compiled in, or the shipped
+# libraries will not match the ACTS/Gaudi they are loaded against.
+CONTAINER_IMAGE = /cvmfs/public-uc.osgstorage.org/ospool/uc-shared/public/futurecolliders/larsonma/mucoll-sim-ubuntu24_full_gaudi_103126_latest.sif
+#CONTAINER_IMAGE = osdf:///ospool/uc-shared/project/futurecolliders/larsonma/mucoll-sim-ubuntu24_full_gaudi_100826_latest.sif
+
+# Local k4ActsTracking build shipped with every job: reco uses this instead
+# of the k4ActsTracking installed in the image, so the jobs run exactly what
+# was last built here (uncommitted changes included). Rebuild before
+# submitting after any change. reco.sh puts these first on LD_LIBRARY_PATH /
+# PYTHONPATH and preloads the plugin library.
+K4ACTS_BUILD = /scratch/larsonma/tutorial2024/ACTSGaudi/TemplateWorkspace/build/packages/k4ActsTracking/k4ActsTracking
+
+Universe                = vanilla
++SingularityImage       = "$(CONTAINER_IMAGE)"
+# Digi input / reco output move over OSDF via pelican (see reco.sh), so no
+# /ospool bind: remote OSG sites do not mount it.
+Requirements            = ( HAS_SINGULARITY =?= True ) && ( HAS_CVMFS_public_uc_osgstorage_org =?= True )
+
+Executable              = $(BENCH_ROOT)/condor/reco/reco.sh
+# --digiTag=/--recoTag=/--recoLabel=/--seeding=/... are written as one token
+# each on purpose: with the macro empty it expands to nothing, and a bare
+# "--digiTag" would swallow whatever followed it. An empty --seeding= etc.
+# then fails reco.sh's check instead of running a default.
+Arguments               = --sample $(SAMPLE) --outputRoot $(OUTPUT_ROOT) --pId $(CHUNK) --BIB $(BIB_LEVEL) --doConing $(DO_CONING) --digiTag=$(DIGI_TAG) --recoTag=$(RECO_TAG) --recoLabel=$(RECO_LABEL) --trackingThreads $(TRACKING_THREADS) --eventThreads $(EVENT_THREADS) --seeding=$(SEEDING) --ckfDirection=$(CKF_DIRECTION) --twoWay=$(TWO_WAY) --seedDedup=$(SEED_DEDUP) --seedDedupMinShared=$(SEED_DEDUP_MIN_SHARED) --hitTime=$(HIT_TIME) --timeBeta=$(TIME_BETA) --seedZMax=$(SEED_ZMAX) --seedImpactMax=$(SEED_IMPACT_MAX) --seedCollisionRegion=$(SEED_CR) --seedMinPt=$(SEED_MIN_PT) --seedDeltaZMax=$(SEED_DZ_MAX) --seedDeltaRMaxTop=$(SEED_DR_MAX_TOP) --seedMaxPerSpM=$(SEED_MAX_PER_SPM) --seedCompatWeight=$(SEED_COMPAT_WEIGHT) --seedZBins=$(SEED_ZBINS) --seedRMax=$(SEED_R_MAX) --filterTracksD0=$(FILTER_D0) --filterTracksZ0=$(FILTER_Z0)
+
+should_transfer_files   = YES
+when_to_transfer_output = ON_EXIT
+transfer_input_files    = $(BENCH_ROOT)/condor/common.sh, \
+                          $(BENCH_ROOT)/configs, \
+                          $(BENCH_ROOT)/setup_config.sh, \
+                          $(K4ACTS_BUILD)/libk4ActsTracking.so, \
+                          $(K4ACTS_BUILD)/libk4ActsTrackingPlugins.so, \
+                          $(K4ACTS_BUILD)/k4ActsTrackingPlugins.components, \
+                          $(K4ACTS_BUILD)/genConfDir
+transfer_output_files   = ""
+
+# Named by chunk, not ProcId: they differ when only missing chunks are queued.
+Output = $(BENCH_ROOT)/condor/reco/logs/out.$(Cluster).$(CHUNK)
+Error  = $(BENCH_ROOT)/condor/reco/logs/err.$(Cluster).$(CHUNK)
+Log    = $(BENCH_ROOT)/condor/reco/logs/log.$(Cluster)
+
+N_CPUS          = $(TRACKING_THREADS) * $(EVENT_THREADS)
+request_cpus    = $INT(N_CPUS)
+request_disk    = 8 GB
+request_memory  = 24 GB
++ProjectName    = "collab.futurecolliders"
+# One full-BIB event can take > 10 h; OSPool holds jobs over ~20 h unless Long.
++JobDurationCategory = "Long"
+
+Queue CHUNK from $(CHUNK_LIST)

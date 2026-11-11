@@ -1,0 +1,43 @@
+# ------------------------------------------------------------------------
+# HTCondor submit file for the track ntupler (OutsideInTrackingStudies/
+# trackNtupler.py), one job per reco file. Reads
+#   $(OUTPUT_ROOT)/$(SAMPLE)/$(RECO_DIR)/$(SAMPLE)_reco$(PID).edm4hep.root
+# and writes
+#   $(OUTPUT_ROOT)/$(SAMPLE)/ntuples_<RECO_DIR without "reco_">/$(SAMPLE)_ntuple$(PID).root
+#
+# Submitted through submit_all_ntuple.sh, which sets SAMPLE and RECO_DIR and
+# queues one job per existing reco file (-queue "PID from <list>").
+# ------------------------------------------------------------------------
+
+OUTPUT_ROOT  = /ospool/uc-shared/project/futurecolliders/larsonma
+BENCH_ROOT   = /scratch/larsonma/tutorial2024/ACTSGaudi/TemplateWorkspace/mucoll-benchmarks
+
+# Same image as reco.submit.
+CONTAINER_IMAGE = /cvmfs/public-uc.osgstorage.org/ospool/uc-shared/public/futurecolliders/larsonma/mucoll-sim-ubuntu24_full_gaudi_103126_latest.sif
+
+Universe                = vanilla
++SingularityImage       = "$(CONTAINER_IMAGE)"
+# Reco input / ntuple output move over OSDF via pelican (see ntuple.sh).
+Requirements            = ( HAS_SINGULARITY =?= True ) && ( HAS_CVMFS_public_uc_osgstorage_org =?= True )
+
+Executable              = $(BENCH_ROOT)/condor/ntuple/ntuple.sh
+Arguments               = --sample $(SAMPLE) --outputRoot $(OUTPUT_ROOT) --recoDir $(RECO_DIR) --pId $(PID)
+
+should_transfer_files   = YES
+when_to_transfer_output = ON_EXIT
+# common.sh also sets up the MAIA config, hence configs/ and setup_config.sh.
+transfer_input_files    = $(BENCH_ROOT)/condor/common.sh, \
+                          $(BENCH_ROOT)/configs, \
+                          $(BENCH_ROOT)/setup_config.sh, \
+                          $(BENCH_ROOT)/OutsideInTrackingStudies/trackNtupler.py
+transfer_output_files   = ""
+
+Output = $(BENCH_ROOT)/condor/ntuple/logs/out.$(Cluster).$(ProcId)
+Error  = $(BENCH_ROOT)/condor/ntuple/logs/err.$(Cluster).$(ProcId)
+Log    = $(BENCH_ROOT)/condor/ntuple/logs/log.$(Cluster)
+
+# One full 100% BIB event peaks at ~8 GB in the ntupler.
+request_cpus    = 1
+request_disk    = 10 GB
+request_memory  = 12 GB
++ProjectName    = "collab.futurecolliders"

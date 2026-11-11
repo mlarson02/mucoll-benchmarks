@@ -1,3 +1,13 @@
 .DS_Store
 __pycache__/
 *.py[cod]
+
+# condor logs and the lists the submit scripts regenerate
+condor/*/logs/
+condor/*/lists/
+condor/reco/chunk_lists/
+nohup.out
+# analysis outputs
+*.root
+*.pkl
+*_plots/

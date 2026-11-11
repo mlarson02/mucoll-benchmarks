@@ -239,3 +239,5 @@ SIM.random.replace_gRandom = True
 SIM.random.seed = None
 SIM.random.type = None
 
+SIM.physics.alternativeDecayStatuses = {22, 23, 51, 52}
+SIM.physics.zeroTimePDGs = {17, 11} # removing 13, 15 from this list

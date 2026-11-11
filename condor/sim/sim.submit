@@ -1,0 +1,86 @@
+# ------------------------------------------------------------------------
+# HTCondor submit file for MAIA_v0 simulation (ddsim).
+#
+# Simulates the first $(N_EVENTS) events of a single gen-level file (edm4hep
+# or HepMC) in $(CHUNKS) chunks of N_EVENTS/CHUNKS events, one condor job per
+# chunk.
+# Outputs land in
+#   $(OUTPUT_ROOT)/$(SAMPLE)/sim/${SAMPLE}_sim$(ProcId).edm4hep.root
+#
+# Set the values below for the sample, then `condor_submit sim.submit`. To
+# override one by hand, use -append: plain VAR=value on the command line is
+# applied BEFORE this file is read, so the value below silently wins.
+#
+# GEN_FILE and PDG_FILE (like configs/ and steer_baseline.py) are transferred
+# when each job STARTS: leave them in place until every job has started.
+#
+# Previous sample: muon_pT2_1000GeV_theta88_92, from
+# muon_1kEv_pT2_1000GeV_theta88_92_pgun.root, N_EVENTS 10000, CHUNKS 5000.
+# ------------------------------------------------------------------------
+
+# Single mu-, pT 0-50 GeV, theta 10-170 deg (10k events in GEN_FILE). All
+# 10k events, 2 per chunk as in the first 2500-event run (cluster 42289472),
+# so chunk ids 0-1249 cover the same events as before.
+#SAMPLE       = muon_0_50GeV_theta10_170_d0_300_10kEv_gen
+#GEN_FILE     = /scratch/larsonma/tutorial2024/ACTSGaudi/TemplateWorkspace/mucoll-benchmarks/OutsideInTrackingStudies/Displaced/muon_0_50GeV_theta10_170_d0_300_10kEv_gen.edm4hep.root
+# Displaced muons with the vertex at the PCA (pgun --d0AtPCA --d0 -300 300),
+# N_EVENTS 10000, CHUNKS 5000:
+#SAMPLE       = muon_0_50GeV_theta10_170_d0PCA_300_10kEv_gen
+#GEN_FILE     = /scratch/larsonma/tutorial2024/ACTSGaudi/TemplateWorkspace/mucoll-benchmarks/OutsideInTrackingStudies/Displaced/muon_0_50GeV_theta10_170_d0PCA_300_10kEv_gen.edm4hep.root
+
+# Stau pairs (Mira's sample <mass GeV>_<tau ns>): m = 4000 GeV, tau = 30 ns
+# (c tau = 9.0 m). PDG_FILE is ddsim's --physics.pdgfile, which defines the
+# stau; leave it unset for the default DD4hep particle.tbl. HepMC2 file with
+# 10k events; first 2000 events, 2 per chunk.
+SAMPLE       = stau_4000GeV_30ns
+GEN_FILE     = /scratch/miralittmann/sim_code/sim/hepmc/4000_30.hepmc
+PDG_FILE     = /scratch/miralittmann/sim_code/sim/tbl_files/4000_30.tbl
+N_EVENTS     = 2500
+CHUNKS       = 1250
+OUTPUT_ROOT  = /ospool/uc-shared/project/futurecolliders/larsonma
+OUT_DIR      = $(OUTPUT_ROOT)/$(SAMPLE)/sim
+
+BENCH_ROOT   = /scratch/larsonma/tutorial2024/ACTSGaudi/TemplateWorkspace/mucoll-benchmarks
+
+# Container image (9.9 GB), staged on the PUBLIC OSDF namespace at
+#   /ospool/uc-shared/public/futurecolliders/larsonma/
+# OSDF pulls the whole image per job. CVMFS is lazily fetched and cached
+# per node, so prefer it once the origin has propagated -- check with
+#   ls /cvmfs/public-uc.osgstorage.org/ospool/uc-shared/public/futurecolliders/larsonma/
+# then swap the two lines below AND add to Requirements:
+#   && ( HAS_CVMFS_public_uc_osgstorage_org =?= True )
+CONTAINER_IMAGE = /cvmfs/public-uc.osgstorage.org/ospool/uc-shared/public/futurecolliders/larsonma/mucoll-sim-ubuntu24_full_gaudi_103126_latest.sif
+#CONTAINER_IMAGE = osdf:///ospool/uc-shared/public/futurecolliders/larsonma/mucoll-sim-ubuntu24_full_gaudi_103126_latest.sif
+
+Universe                = vanilla
++SingularityImage       = "$(CONTAINER_IMAGE)"
+# Output moves over OSDF via pelican (see sim.sh), so no /ospool bind:
+# remote OSG sites do not mount it.
+Requirements            = ( HAS_SINGULARITY =?= True ) && ( HAS_CVMFS_public_uc_osgstorage_org =?= True )
+
+# submit_all_digi.sh waits for this batch to leave the queue.
+batch_name              = $(SAMPLE)/sim
+
+Executable              = $(BENCH_ROOT)/condor/sim/sim.sh
+Arguments               = --sample $(SAMPLE) --genFile $(GEN_FILE) --nEvents $(N_EVENTS) --chunks $(CHUNKS) --pId $(ProcId) --outDir $(OUT_DIR) --pdgFile=$(PDG_FILE)
+
+should_transfer_files   = YES
+when_to_transfer_output = ON_EXIT
+transfer_input_files    = $(BENCH_ROOT)/condor/common.sh, \
+                          $(GEN_FILE), \
+                          $(BENCH_ROOT)/configs, \
+                          $(BENCH_ROOT)/setup_config.sh, \
+                          $(BENCH_ROOT)/simulation/steer_baseline.py, \
+                          $(PDG_FILE)
+transfer_output_files   = ""
+
+Output = $(BENCH_ROOT)/condor/sim/logs/out.$(Cluster).$(ProcId)
+Error  = $(BENCH_ROOT)/condor/sim/logs/err.$(Cluster).$(ProcId)
+Log    = $(BENCH_ROOT)/condor/sim/logs/log.$(Cluster)
+
+request_cpus    = 1
+request_disk    = 8 GB
+request_memory  = 8 GB
++ProjectName    = "collab.futurecolliders"
+
+Queue $(CHUNKS)
