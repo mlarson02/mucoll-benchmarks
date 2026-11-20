@@ -3,8 +3,6 @@ from podio.root_io import Reader  # for TTree (i.e. ROOTReader)
 import edm4hep
 import ROOT
 from collections import defaultdict
-ROOT.gInterpreter.LoadFile("podio/LinkNavigator.h")
-ROOT.gInterpreter.LoadFile("podio/LinkCollection.h")
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.colors import LogNorm, TwoSlopeNorm
 import glob
@@ -233,6 +231,25 @@ def track_has_hits(track):
     if NO_HITS and NHITS_SOURCE == "unavailable":
         return True
     return track_nhits(track) > 0
+
+
+# --- Seed-multiplicity-only mode ---------------------------------------------
+# For files without the truth links, e.g. the mucoll-benchmarks main config
+# output (no AllTracksRelations). Only the multiplicities are read: seeds per
+# event (with seed pT / eta) and AllTracks / DedupedTracks / SiTracks per event.
+# Everything that needs truth is skipped, so such an entry is left out of the
+# truth-based plots and overlays.
+# Precedence: SEED_MULT_ONLY env var ("1" on / "0" off for every file) >
+# per-file autodetect (on when any TRUTH_REQUIRED_COLLECTIONS is missing).
+TRUTH_REQUIRED_COLLECTIONS = ("MCParticles", "SiTrackRelations", "AllTracksRelations")
+
+_env_seed_mult_only = os.environ.get("SEED_MULT_ONLY")
+
+
+def _detect_seed_mult_only(event):
+    """True when the file `event` was read from lacks a truth-link collection."""
+    available = set(event.getAvailableCollections())
+    return not all(c in available for c in TRUTH_REQUIRED_COLLECTIONS)
 
 
 
@@ -1136,15 +1153,23 @@ file_names = [
     #"/ospool/uc-shared/project/futurecolliders/larsonma/muon_pT0_50GeV_theta10_170/reco_fullBIB_uncone_rawtime_ITOTDisks_Minimal_v2_OutIn_DZ400_DRTop650_Compat200",
    # "/ospool/uc-shared/project/futurecolliders/larsonma/muon_pT0_50GeV_theta10_170/reco_fullBIB_uncone_rawtime_ITOTDisks_Minimal_v2_OutIn_DZ400_DRTop650",
 
-    "/ospool/uc-shared/project/futurecolliders/larsonma/muon_pT0_50GeV_theta10_170/reco_fullBIB_coned_rawtime_VXDNominal_InOut_SeedDedup",
-    "/ospool/uc-shared/project/futurecolliders/larsonma/muon_pT0_50GeV_theta10_170/reco_fullBIB_coned_rawtime_VXDNominal_InOut_TwoWay_SeedDedup",
-    "/ospool/uc-shared/project/futurecolliders/larsonma/muon_pT0_50GeV_theta10_170/reco_fullBIB_coned_rawtime_ITOTDisks_Minimal_v2_OutIn_SeedDedup",
+    #"/ospool/uc-shared/project/futurecolliders/larsonma/muon_pT0_50GeV_theta10_170/reco_fullBIB_coned_rawtime_VXDNominal_InOut_SeedDedup",
+    #"/ospool/uc-shared/project/futurecolliders/larsonma/muon_pT0_50GeV_theta10_170/reco_fullBIB_coned_rawtime_VXDNominal_InOut_TwoWay_SeedDedup",
+    #"/ospool/uc-shared/project/futurecolliders/larsonma/muon_pT0_50GeV_theta10_170/reco_fullBIB_coned_rawtime_ITOTDisks_Minimal_v2_OutIn_SeedDedup",
+    "/scratch/larsonma/localTiming/main_VXD.edm4hep.root",
+    "/scratch/larsonma/localTiming/VXDMinimal_InOut.edm4hep.root",
+    "/scratch/larsonma/localTiming/VXDNominal_InOut_ZBins.edm4hep.root",
+    "/scratch/larsonma/localTiming/VXDMinimal_InOut_TwoWay.edm4hep.root",
+    "/scratch/larsonma/localTiming/VXDNominal_InOut_TwoWay_ZBins.edm4hep.root",
+    "/scratch/larsonma/localTiming/v2_OutIn_DZ400_SpM0_ZBins.edm4hep.root",
+    "/scratch/larsonma/localTiming/v3_OutIn_DZ400_SpM0_ZBins.edm4hep.root"
+    
 
 ]
 
-OVERLAY_DIR = "SeedMult_Efficiencies"
+OVERLAY_DIR = "SeedMult_ZBins_WithOutIn"
 #OVERLAY_LABELS = ["ITOT Min v2", "ITOT Min v2 DZ400, DRTop650, SpM0, Compat200", "ITOT Min v2 DZ400, DRTop650, SpM0, Compat1", "ITOT Min v2 DZ400, SpM0", "ITOT Min v2 DZ400, DRTop650, SpM1, Compat200", "ITOT Min v2 DZ400, DRTop650, SpM1, Compat1"]
-OVERLAY_LABELS = ["VXD Nominal In-Out", "VXD Nominal In-Out Two-Way", "ITOTDisks_Minimal_v2 Out-In SeedDedup"]
+OVERLAY_LABELS = ["Main VXD In-Out", "VXD Nominal In-Out", "VXD Nominal In-Out Full VXD + IT Disks", "VXD Nominal In-Out Two-Way", "VXD Nominal In-Out Full VXD+IT Disks Two-Way", "ITOT_v2 Out-In, spm0", "ITOT_v3 Out-In, spm0"]
 #OVERLAY_LABELS = ["Full IT+OT Seeding, Two-Way,uvfix, Inflate100", "OutInMinimal_v3 Seeding, Seed: d0max 3, CR 6", "OutInMinimal_v2 Seeding, Seed: d0max 3, CR 6", "OutInMinimal_v4 Seeding, Seed: d0max 3, CR 6", "OutInMinimal_v2 Seeding, Seed: d0max 10, CR 15", "OutInMinimal_v2 Seeding, Seed: d0max 20, CR 30", "OutInMinimal_v2 Seeding, Seed: d0max 30, CR 45", "OutInMinimal_v3 Seeding, Seed: d0max 10, CR 15", "OutInMinimal_v3 Seeding, Seed: d0max 20, CR 30", "OutInMinimal_v3 Seeding, Seed: d0max 30, CR 45", "OutInMinimal_v4 Seeding, Seed: d0max 10, CR 15", "OutInMinimal_v4 Seeding, Seed: d0max 20, CR 30", "OutInMinimal_v4 Seeding, Seed: d0max 30, CR 45"]
 #OVERLAY_LABELS = ["Minimal", "Minimal_v2", "Minimal_v3"]
 #OVERLAY_LABELS = ["ITOTDisks_Minimal_v3, d0 300 mm, CR 500 mm"]
@@ -1269,6 +1294,29 @@ def _id_diag_add(acc, rng, r, z, cell_id):
             sample[s] = _bottom_k(old, (u[m], r[m], z[m], side[m], layer[m]))
 
 
+def seed_kinematics(seeds):
+    """(mask of the seeds with a track state, their pT, eta, phi)."""
+    sd = track_arrays(seeds, 0)
+    ok = (sd["nstates"] > 0) & (sd["omega"] != 0)
+    theta = np.pi / 2 - np.arctan(sd["tanLambda"][ok])
+    pt = 0.2998 * BField / np.abs(sd["omega"][ok] * 1000.)
+    return ok, pt, -np.log(np.tan(theta / 2)), sd["phi"][ok]
+
+
+def seed_mult_event(event, acc, raw):
+    """One event in seed-multiplicity-only mode: no truth, no hits."""
+    available = set(event.getAvailableCollections())
+    for key, cname in (("all_tracks_mult_per_event", "AllTracks"),
+                       ("deduped_tracks_mult_per_event", "DedupedTracks"),
+                       ("sitracks_mult_per_event", "SiTracks")):
+        if cname in available:
+            acc[key].append(int(track_arrays(event.get(cname))["has_hits"].sum()))
+    _, pt_s, eta_s, _ = seed_kinematics(event.get("SeedTracks"))
+    raw["seed_pt_all"].append(pt_s)
+    raw["seed_eta_all"].append(eta_s)
+    acc["seed_nseeds_per_event"].append(len(pt_s))
+
+
 def process_file(task):
     """Event loop over one input file; returns its accumulators.
 
@@ -1284,6 +1332,7 @@ def process_file(task):
     acc.update({k: 0 for k in _SUM_KEYS})
     acc.update(
         fname=fname, use_coned=use_coned, no_hits=None, detected_no_hits=None, nhits_source=None,
+        seed_mult_only=None, detected_seed_mult_only=None,
         diag_lines=[],
         layer_hits_sitracks={sys_id: defaultdict(int) for sys_id in range(1, 7)},
         id_diag_counts=defaultdict(int),        # (system, side, layer) -> count
@@ -1299,6 +1348,7 @@ def process_file(task):
 
     reader = open_reader([fname])
     i = 0
+    seed_only = False
     for event in reader.get("events"):
         if i == 0:
             # Dropped-hit-collection autodetect, per file (see the no-hits
@@ -1307,6 +1357,16 @@ def process_file(task):
             detected, NHITS_SOURCE = _detect_mode(event)
             NO_HITS = detected if _env_no_hits is None else _env_no_hits not in ("0", "false", "False", "")
             acc.update(no_hits=NO_HITS, detected_no_hits=detected, nhits_source=NHITS_SOURCE)
+            detected_seed = _detect_seed_mult_only(event)
+            seed_only = (detected_seed if _env_seed_mult_only is None
+                         else _env_seed_mult_only not in ("0", "false", "False", ""))
+            acc.update(seed_mult_only=seed_only, detected_seed_mult_only=detected_seed)
+
+        if seed_only:
+            seed_mult_event(event, acc, raw)
+            i += 1
+            del event
+            continue
 
         rz_muon_r = []
         rz_muon_z = []
@@ -1710,12 +1770,7 @@ def process_file(task):
             raw["dup_eta"].append(np.arcsinh(_si["tanLambda"][_dup]))
 
         # Seed track pT and eta of every seed
-        _sd = track_arrays(seedTracks, 0)
-        _ok = (_sd["nstates"] > 0) & (_sd["omega"] != 0)
-        theta_s = np.pi/2 - np.arctan(_sd["tanLambda"][_ok])
-        eta_s = -np.log(np.tan(theta_s / 2))
-        phi_s = _sd["phi"][_ok]
-        pt_s = 0.2998 * BField / np.abs(_sd["omega"][_ok] * 1000.)
+        _ok, pt_s, eta_s, phi_s = seed_kinematics(seedTracks)
         raw["seed_pt_all"].append(pt_s)
         raw["seed_eta_all"].append(eta_s)
         acc["seed_nseeds_per_event"].append(len(pt_s))
@@ -1755,7 +1810,7 @@ def process_file(task):
         # Free this event and its per-hit arrays before the next event is
         # read; otherwise the worker briefly holds two events.
         del event
-        _xs = _ys = _zs = _rs = _cids = _keys = _at = _sd = _si = None
+        _xs = _ys = _zs = _rs = _cids = _keys = _at = _si = None
 
     for k in _ARRAY_KEYS:
         acc[k] = np.concatenate(raw[k]) if raw[k] else np.empty(0)
@@ -2061,6 +2116,8 @@ def plot_entry(plotdir, acc, no_hits):
                           ("SiTracks", sitracks_mult_per_event),
                           ("Fake SiTracks", fake_mult_per_event),
                           ("SeedTracks", seed_nseeds_per_event)]:
+            if not counts:   # e.g. fakes in seed-multiplicity-only mode
+                continue
             print(f"  {n:<20s} mean={np.mean(counts):>10.2f}  median={np.median(counts):>10.1f}  "
                   f"std dev={np.std(counts):>10.2f}")
 
@@ -4344,9 +4401,14 @@ def finish_entry(infile, file_results):
           f"(from {'env var' if _env_use_coned is not None else 'filename autodetect'})")
     read = [r for r in file_results if r["n_events"] > 0] or file_results
     no_hits, detected, nhits_source = read[0]["no_hits"], read[0]["detected_no_hits"], read[0]["nhits_source"]
-    if len({(r["no_hits"], r["nhits_source"]) for r in read}) > 1:
-        print("  WARNING: the files of this entry differ in which hit collections they have; "
+    if len({(r["no_hits"], r["nhits_source"], r["seed_mult_only"]) for r in read}) > 1:
+        print("  WARNING: the files of this entry differ in which hit / truth collections they have; "
               "each was read in its own mode and the plots mix them.")
+    if read[0]["seed_mult_only"]:
+        src = ("env var" if _env_seed_mult_only is not None
+               else f"autodetect: {' / '.join(TRUTH_REQUIRED_COLLECTIONS)} not all present")
+        print(f"  SEED_MULT_ONLY = True ({src}): seed and track multiplicities only, "
+              f"truth-based plots skipped.")
     if no_hits:
         print(f"  NO_HITS = True (from {'env var' if _env_no_hits is not None else 'collection autodetect'}): "
               f"{' / '.join(NO_HITS_REQUIRED_COLLECTIONS)} absent — hit-level plots disabled "
